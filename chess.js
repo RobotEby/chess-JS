@@ -51,4 +51,47 @@ function createBoard() {
   }
 }
 
+function handleClick(e) {
+  const square = e.target;
+  const row = parseInt(square.dataset.row);
+  const col = parseInt(square.dataset.col);
+  const piece = initialBoard[row][col];
+  const color = square.dataset.color;
+
+  if (!selectedSquare) {
+    if (piece && color === turn) {
+      selectedSquare = { row, col, piece, element: square };
+      square.classList.add("selected");
+    }
+    return;
+  }
+
+  const prevRow = selectedSquare.row;
+  const prevCol = selectedSquare.col;
+
+  if (prevRow === row && prevCol === col) {
+    resetSelection();
+    return;
+  }
+
+  if (isValidMove(selectedSquare.piece, prevRow, prevCol, row, col)) {
+    initialBoard[row][col] = selectedSquare.piece;
+    initialBoard[prevRow][prevCol] = "";
+
+    turn = turn === "white" ? "black" : "white";
+
+    createBoard();
+  } else {
+    alert("Movimento Inválido!");
+    resetSelection();
+  }
+}
+
+function resetSelection() {
+  if (selectedSquare) {
+    selectedSquare.element.classList.remove("selected");
+    selectedSquare = null;
+  }
+}
+
 createBoard();
