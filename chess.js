@@ -167,4 +167,35 @@ function isPathClear(r1, c1, r2, c2) {
   return true;
 }
 
+function findKing(color) {
+  const kingChar = color === "white" ? "K" : "k";
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      if (initialBoard[r][c] === kingChar) {
+        return { row: r, col: c };
+      }
+    }
+  }
+  return null;
+}
+
+function isSquareAttacked(targetRow, targetCol, defenderColor) {
+  const enemyColor = defenderColor === "white" ? "black" : "white";
+
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const piece = initialBoard[r][c];
+      if (!piece) continue;
+
+      const pieceColor = piece === piece.toUpperCase() ? "white" : "black";
+      if (pieceColor === enemyColor) {
+        if (isValidMove(piece, r, c, targetRow, targetCol, false)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 createBoard();
