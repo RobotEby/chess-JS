@@ -3,42 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <title>Xadrez JS</title>
-    <style>
-      body {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-        background: #333;
-      }
-      #board {
-        display: grid;
-        grid-template-columns: repeat(8, 60px);
-        grid-template-rows: repeat(8, 60px);
-        border: 5px solid #5c4033;
-      }
-      .square {
-        width: 60px;
-        height: 60px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        font-size: 40px;
-        cursor: pointer;
-        user-select: none;
-      }
-      .white {
-        background-color: #f0d9b5;
-      }
-      .black {
-        background-color: #b58863;
-      }
-      .selected {
-        background-color: yellow !important;
-      }
-    </style>
+    <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <div id="promotionModal" class="modal">
+      <div class="modal-content">
+        <h3>Escolha a peça para promoção:</h3>
+        <div class="options">
+          <button data-piece="Q">♕ Dama</button>
+          <button data-piece="R">♖ Torre</button>
+          <button data-piece="B">♗ Bispo</button>
+          <button data-piece="N">♘ Cavalo</button>
+        </div>
+      </div>
+    </div>
+    <div id="controls"></div>
     <div id="board"></div>
     <script src="chess.js"></script>
   </body>
