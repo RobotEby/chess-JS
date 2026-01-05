@@ -94,4 +94,62 @@ function resetSelection() {
   }
 }
 
+function isValidMove(piece, fromRow, fromCol, toRow, toCol) {
+  const dx = toCol - fromCol;
+  const dy = toRow - fromRow;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  const targetPiece = initialBoard[toRow][toCol];
+
+  if (targetPiece) {
+    const targetColor =
+      targetPiece === targetPiece.toUpperCase() ? "white" : "black";
+    const myColor = piece === piece.toUpperCase() ? "white" : "black";
+    if (targetColor === myColor) return false;
+  }
+
+  const type = piece.toLowerCase();
+
+  switch (type) {
+    case "p":
+      const direction = piece === "P" ? -1 : 1;
+      const startRow = piece === "P" ? 6 : 1;
+
+      if (dx === 0 && dy === direction && !targetPiece) return true;
+
+      if (
+        dx === 0 &&
+        dy === 2 * direction &&
+        fromRow === startRow &&
+        !targetPiece &&
+        !initialBoard[fromRow + direction][fromCol]
+      )
+        return true;
+
+      if (absDx === 1 && dy === direction && targetPiece) return true;
+      return false;
+
+    case "r":
+      if (dx !== 0 && dy !== 0) return false;
+      return isPathClear(fromRow, fromCol, toRow, toCol);
+
+    case "b":
+      if (absDx !== absDy) return false;
+      return isPathClear(fromRow, fromCol, toRow, toCol);
+
+    case "q":
+      if (dx !== 0 && dy !== 0 && absDx !== absDy) return false;
+      return isPathClear(fromRow, fromCol, toRow, toCol);
+
+    case "n":
+      return (absDx === 2 && absDy === 1) || (absDx === 1 && absDy === 2);
+
+    case "k":
+      return absDx <= 1 && absDy <= 1;
+
+    default:
+      return false;
+  }
+}
+
 createBoard();
