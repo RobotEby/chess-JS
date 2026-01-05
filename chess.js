@@ -152,4 +152,19 @@ function isValidMove(piece, fromRow, fromCol, toRow, toCol) {
   }
 }
 
+function isPathClear(r1, c1, r2, c2) {
+  const dr = Math.sign(r2 - r1);
+  const dc = Math.sign(c2 - c1);
+
+  let r = r1 + dr;
+  let c = c1 + dc;
+
+  while (r !== r2 || c !== c2) {
+    if (initialBoard[r][c] !== "") return false;
+    r += dr;
+    c += dc;
+  }
+  return true;
+}
+
 createBoard();
