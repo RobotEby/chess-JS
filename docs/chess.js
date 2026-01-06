@@ -1,100 +1,72 @@
 /**
- * CONSTANTES E VARIÁVEIS GLOBAIS
+ * Chess Game Logic
+ * Handles board state, move validation, special rules (Castling, En Passant),
+ * and game lifecycle (Checkmate, Stalemate, Promotion).
  */
 
-// Elemento HTML onde o tabuleiro será renderizado
 const boardElement = document.getElementById("board");
+const messageElement = document.getElementById("message");
 
-// Armazena a casa atualmente selecionada (null se nenhuma estiver selecionada)
+// --- Game State ---
 let selectedSquare = null;
-
-// Controla de quem é a vez: "white" para brancas, "black" para pretas
-let turn = "white";
-
-// Flag que indica se o jogo terminou
+let turn = "white"; // 'white' or 'black'
 let gameOver = false;
 
-/**
- * CONFIGURAÇÃO DO TABULEIRO
- */
-
-// Matriz 8x8 representando o estado inicial do tabuleiro
-// Notação: letras minúsculas = pretas, maiúsculas = brancas
-// Peças: r/R = torre, n/N = cavalo, b/B = bispo, q/Q = rainha, k/K = rei, p/P = peão
-const initialBoard = [
-  ["r", "n", "b", "q", "k", "b", "n", "r"], // Linha 0: peças pretas
-  ["p", "p", "p", "p", "p", "p", "p", "p"], // Linha 1: peões pretos
-  ["", "", "", "", "", "", "", ""], // Linha 2: vazia
-  ["", "", "", "", "", "", "", ""], // Linha 3: vazia
-  ["", "", "", "", "", "", "", ""], // Linha 4: vazia
-  ["", "", "", "", "", "", "", ""], // Linha 5: vazia
-  ["P", "P", "P", "P", "P", "P", "P", "P"], // Linha 6: peões brancos
-  ["R", "N", "B", "Q", "K", "B", "N", "R"], // Linha 7: peças brancas
+// Initial configuration for a standard chess game
+const startConfig = [
+  ["r", "n", "b", "q", "k", "b", "n", "r"],
+  ["p", "p", "p", "p", "p", "p", "p", "p"],
+  ["", "", "", "", "", "", "", ""],
+  ["", "", "", "", "", "", "", ""],
+  ["", "", "", "", "", "", "", ""],
+  ["", "", "", "", "", "", "", ""],
+  ["P", "P", "P", "P", "P", "P", "P", "P"],
+  ["R", "N", "B", "Q", "K", "B", "N", "R"],
 ];
 
-// Mapeamento de caracteres de peça para seus símbolos Unicode
-const pieces = {
-  R: "♖", // Torre branca
-  N: "♘", // Cavalo branco
-  B: "♗", // Bispo branco
-  Q: "♕", // Rainha branca
-  K: "♔", // Rei branco
-  P: "♙", // Peão branco
-  r: "♜", // Torre preta
-  n: "♞", // Cavalo preto
-  b: "♝", // Bispo preto
-  q: "♛", // Rainha preta
-  k: "♚", // Rei preto
-  p: "♟", // Peão preto
+// Deep copy to initialize the active board
+let initialBoard = JSON.parse(JSON.stringify(startConfig));
+
+/**
+ * Tracks rights for Castling.
+ * If the King or Rooks move, the respective boolean becomes true, disabling castling.
+ */
+let castlingRights = {
+  white: { kingMoved: false, rookLeftMoved: false, rookRightMoved: false },
+  black: { kingMoved: false, rookLeftMoved: false, rookRightMoved: false },
 };
 
 /**
- * FUNÇÕES DE INTERFACE DO USUÁRIO
+ * Stores the last move made.
+ * Essential for validating 'En Passant' captures.
+ * Format: { piece, fromRow, fromCol, toRow, toCol }
  */
+let lastMove = null;
 
-/**
- * Exibe uma mensagem na interface do usuário
- * @param {string} text - Texto da mensagem a ser exibida
- */
+// Unicode Chess Pieces mapping
+const pieces = {
+  R: "♖",
+  N: "♘",
+  B: "♗",
+  Q: "♕",
+  K: "♔",
+  P: "♙",
+  r: "♜",
+  n: "♞",
+  b: "♝",
+  q: "♛",
+  k: "♚",
+  p: "♟",
+};
+
+// --- Helper Functions ---
+
+/** Updates the status message in the UI */
 function showMessage(text) {
-  const messageElement = document.getElementById("message");
   messageElement.innerText = text;
 }
 
-/**
- * Cria e renderiza o tabuleiro no elemento HTML
- * Esta função recria todo o tabuleiro baseado no estado atual de initialBoard
- */
-function createBoard() {
-  boardElement.innerHTML = "";
-  for (let row = 0; row < 8; row++) {
-    for (let col = 0; col < 8; col++) {
-      // Cria um elemento div para cada casa do tabuleiro
-      const square = document.createElement("div");
-      square.className = `square ${(row + col) % 2 === 0 ? "white" : "black"}`;
-      square.dataset.row = row;
-      square.dataset.col = col;
-
-      // Obtém a peça na posição atual do tabuleiro
-      const piece = initialBoard[row][col];
-      if (piece) {
-        square.innerText = pieces[piece];
-        square.dataset.piece = piece;
-        // Determina a cor da peça: maiúscula = branca, minúscula = preta
-        square.dataset.color =
-          piece === piece.toUpperCase() ? "white" : "black";
-      }
-
-      // Adiciona o evento de clique à casa
-      square.addEventListener("click", handleClick);
-      boardElement.appendChild(square);
-    }
-  }
-}
-
-/**
- * Remove a seleção da casa atualmente selecionada
- */
+/** Clears the visual selection from the board */
 function resetSelection() {
   if (selectedSquare) {
     selectedSquare.element.classList.remove("selected");
@@ -102,120 +74,21 @@ function resetSelection() {
   }
 }
 
-/**
- * Lida com o clique do usuário em uma casa do tabuleiro
- * @param {Event} e - Evento de clique
- */
-function handleClick(e) {
-  // Se o jogo terminou, ignora cliques
-  if (gameOver) return;
-
-  const square = e.target;
-  const row = parseInt(square.dataset.row);
-  const col = parseInt(square.dataset.col);
-  const piece = initialBoard[row][col];
-  const color = square.dataset.color;
-
-  // Se nenhuma casa está selecionada
-  if (!selectedSquare) {
-    // Se clicou em uma peça da cor do jogador atual, seleciona-a
-    if (piece && color === turn) {
-      selectedSquare = { row, col, piece, element: square };
-      square.classList.add("selected");
-    }
-    return;
-  }
-
-  const prevRow = selectedSquare.row;
-  const prevCol = selectedSquare.col;
-
-  // Se clicou na mesma casa que já estava selecionada, desseleciona
-  if (prevRow === row && prevCol === col) {
-    resetSelection();
-    return;
-  }
-
-  // Se o movimento é válido, executa-o
-  if (isValidMove(selectedSquare.piece, prevRow, prevCol, row, col)) {
-    // Move a peça para a nova posição
-    initialBoard[row][col] = selectedSquare.piece;
-    initialBoard[prevRow][prevCol] = "";
-
-    // Verifica promoção de peão
-    if (
-      (selectedSquare.piece === "P" && row === 0) ||
-      (selectedSquare.piece === "p" && row === 7)
-    ) {
-      const color = selectedSquare.piece === "P" ? "white" : "black";
-      promotePawn(row, col, color);
-    }
-
-    resetSelection();
-    // Alterna o turno
-    turn = turn === "white" ? "black" : "white";
-
-    // Atualiza o tabuleiro e verifica xeque
-    createBoard();
-    highlightCheck();
-  } else {
-    alert("Movimento Inválido!");
-    resetSelection();
-  }
+/** Switches the active turn and checks for game-ending conditions */
+function switchTurn() {
+  turn = turn === "white" ? "black" : "white";
+  highlightCheck();
 }
 
 /**
- * Verifica e destaca se o rei atual está em xeque
- * @returns {boolean} - Retorna true se o rei está em xeque, false caso contrário
- */
-function highlightCheck() {
-  // Remove a classe "check" de todas as casas
-  document
-    .querySelectorAll(".check")
-    .forEach((el) => el.classList.remove("check"));
-
-  const kingPos = findKing(turn);
-  // Verifica se o rei da cor atual está sendo atacado
-  if (kingPos && isSquareAttacked(kingPos.row, kingPos.col, turn)) {
-    const squareIndex = kingPos.row * 8 + kingPos.col;
-    const square = boardElement.children[squareIndex];
-    square.classList.add("check");
-
-    // Verifica se é xeque-mate
-    if (!hasAnyLegalMove(turn)) {
-      showMessage(
-        `Xeque-mate! Vitória das ${turn === "white" ? "Pretas" : "Brancas"}`
-      );
-      gameOver = true;
-    } else {
-      showMessage(`Xeque! Vez das ${turn === "white" ? "Brancas" : "Pretas"}`);
-    }
-    return true;
-  }
-
-  showMessage("");
-  return false;
-}
-
-/**
- * FUNÇÕES DE LÓGICA DO JOGO
- */
-
-/**
- * Verifica se o caminho entre duas casas está livre de peças
- * @param {number} r1 - Linha de origem
- * @param {number} c1 - Coluna de origem
- * @param {number} r2 - Linha de destino
- * @param {number} c2 - Coluna de destino
- * @returns {boolean} - Retorna true se o caminho está livre
+ * Checks if the path between two squares is empty (horizontally, vertically, or diagonally).
+ * Does not check the end square.
  */
 function isPathClear(r1, c1, r2, c2) {
   const dr = Math.sign(r2 - r1);
   const dc = Math.sign(c2 - c1);
-
   let r = r1 + dr;
   let c = c1 + dc;
-
-  // Percorre cada casa no caminho até o destino
   while (r !== r2 || c !== c2) {
     if (initialBoard[r][c] !== "") return false;
     r += dr;
@@ -224,43 +97,33 @@ function isPathClear(r1, c1, r2, c2) {
   return true;
 }
 
-/**
- * Encontra a posição do rei de uma determinada cor
- * @param {string} color - Cor do rei a ser encontrado ("white" ou "black")
- * @returns {Object|null} - Retorna objeto {row, col} ou null se não encontrado
- */
+/** Finds the current coordinates of the King for the given color */
 function findKing(color) {
   const kingChar = color === "white" ? "K" : "k";
   for (let r = 0; r < 8; r++) {
     for (let c = 0; c < 8; c++) {
-      if (initialBoard[r][c] === kingChar) {
-        return { row: r, col: c };
-      }
+      if (initialBoard[r][c] === kingChar) return { row: r, col: c };
     }
   }
   return null;
 }
 
+// --- Logic & Validation ---
+
 /**
- * Verifica se uma determinada casa está sendo atacada por alguma peça adversária
- * @param {number} targetRow - Linha da casa alvo
- * @param {number} targetCol - Coluna da casa alvo
- * @param {string} defenderColor - Cor do jogador defensor
- * @returns {boolean} - Retorna true se a casa está sendo atacada
+ * Determines if a specific square is under attack by the enemy.
+ * Used for King safety and Castling validation.
  */
 function isSquareAttacked(targetRow, targetCol, defenderColor) {
   const enemyColor = defenderColor === "white" ? "black" : "white";
-
-  // Verifica todas as peças do tabuleiro
   for (let r = 0; r < 8; r++) {
     for (let c = 0; c < 8; c++) {
       const piece = initialBoard[r][c];
       if (!piece) continue;
-
       const pieceColor = piece === piece.toUpperCase() ? "white" : "black";
-      // Se é uma peça adversária, verifica se pode atacar a casa alvo
       if (pieceColor === enemyColor) {
-        if (isValidMove(piece, r, c, targetRow, targetCol, true)) {
+        // We pass simpleCheck=true to prevent infinite recursion during Move validation
+        if (isValidMove(piece, r, c, targetRow, targetCol, true, true)) {
           return true;
         }
       }
@@ -269,27 +132,18 @@ function isSquareAttacked(targetRow, targetCol, defenderColor) {
   return false;
 }
 
-/**
- * Verifica se um jogador tem algum movimento legal disponível
- * @param {string} color - Cor do jogador a verificar
- * @returns {boolean} - Retorna true se há pelo menos um movimento legal
- */
+/** Checks if the current player has any valid move left (to detect Mate or Stalemate) */
 function hasAnyLegalMove(color) {
-  // Percorre todas as peças do jogador
   for (let r = 0; r < 8; r++) {
     for (let c = 0; c < 8; c++) {
       const piece = initialBoard[r][c];
       if (!piece) continue;
-
       const pieceColor = piece === piece.toUpperCase() ? "white" : "black";
       if (pieceColor !== color) continue;
 
-      // Testa todos os destinos possíveis para esta peça
       for (let tr = 0; tr < 8; tr++) {
         for (let tc = 0; tc < 8; tc++) {
-          if (isValidMove(piece, r, c, tr, tc)) {
-            return true;
-          }
+          if (isValidMove(piece, r, c, tr, tc)) return true;
         }
       }
     }
@@ -298,14 +152,14 @@ function hasAnyLegalMove(color) {
 }
 
 /**
- * Verifica se um movimento é válido
- * @param {string} piece - Caractere representando a peça
- * @param {number} fromRow - Linha de origem
- * @param {number} fromCol - Coluna de origem
- * @param {number} toRow - Linha de destino
- * @param {number} toCol - Coluna de destino
- * @param {boolean} ignoreKingSafety - Se true, ignora verificação de segurança do rei
- * @returns {boolean} - Retorna true se o movimento é válido
+ * Main validation function.
+ * @param {string} piece - The piece character (e.g., 'P', 'k').
+ * @param {number} fromRow - Source Row.
+ * @param {number} fromCol - Source Column.
+ * @param {number} toRow - Target Row.
+ * @param {number} toCol - Target Column.
+ * @param {boolean} ignoreKingSafety - If true, skips the "Does this leave king in check?" test.
+ * @param {boolean} simpleCheck - If true, skips complex logic (En Passant/Castling) to avoid recursion.
  */
 function isValidMove(
   piece,
@@ -313,34 +167,36 @@ function isValidMove(
   fromCol,
   toRow,
   toCol,
-  ignoreKingSafety = false
+  ignoreKingSafety = false,
+  simpleCheck = false
 ) {
-  // Calcula diferenças de posição
+  const targetPiece = initialBoard[toRow][toCol];
+  const myColor = piece === piece.toUpperCase() ? "white" : "black";
+
+  // 1. Prevent capturing own pieces
+  if (targetPiece) {
+    const targetColor =
+      targetPiece === targetPiece.toUpperCase() ? "white" : "black";
+    if (targetColor === myColor) return false;
+  }
+
   const dx = toCol - fromCol;
   const dy = toRow - fromRow;
   const absDx = Math.abs(dx);
   const absDy = Math.abs(dy);
-  const targetPiece = initialBoard[toRow][toCol];
-
-  // Verifica se há uma peça da mesma cor no destino
-  if (targetPiece) {
-    const targetColor =
-      targetPiece === targetPiece.toUpperCase() ? "white" : "black";
-    const myColor = piece === piece.toUpperCase() ? "white" : "black";
-    if (targetColor === myColor) return false;
-  }
-
-  let validGeometry = false;
   const type = piece.toLowerCase();
 
-  // Verifica a geometria do movimento para cada tipo de peça
+  let validGeometry = false;
+
+  // 2. Geometric Validation based on Piece Type
   switch (type) {
-    case "p": // Peão
-      const direction = piece === "P" ? -1 : 1; // Peões brancos movem para cima (linhas decrescentes), pretos para baixo
+    case "p": // Pawn
+      const direction = piece === "P" ? -1 : 1;
       const startRow = piece === "P" ? 6 : 1;
-      // Movimento para frente (uma casa)
+
+      // Standard Move
       if (dx === 0 && dy === direction && !targetPiece) validGeometry = true;
-      // Movimento inicial de duas casas
+      // Double Move
       else if (
         dx === 0 &&
         dy === 2 * direction &&
@@ -349,82 +205,136 @@ function isValidMove(
         !initialBoard[fromRow + direction][fromCol]
       )
         validGeometry = true;
-      // Captura diagonal
+      // Standard Capture
       else if (absDx === 1 && dy === direction && targetPiece)
         validGeometry = true;
+      // En Passant
+      else if (absDx === 1 && dy === direction && !targetPiece) {
+        if (
+          lastMove &&
+          lastMove.piece.toLowerCase() === "p" &&
+          Math.abs(lastMove.fromRow - lastMove.toRow) === 2 &&
+          lastMove.toRow === fromRow &&
+          lastMove.toCol === toCol
+        ) {
+          validGeometry = true;
+        }
+      }
       break;
-    case "r": // Torre
-      // Movimento em linha reta (horizontal ou vertical)
+
+    case "r": // Rook
       if ((dx === 0 || dy === 0) && isPathClear(fromRow, fromCol, toRow, toCol))
         validGeometry = true;
       break;
-    case "b": // Bispo
-      // Movimento diagonal
+    case "b": // Bishop
       if (absDx === absDy && isPathClear(fromRow, fromCol, toRow, toCol))
         validGeometry = true;
       break;
-    case "q": // Rainha
-      // Combinação de torre e bispo (horizontal, vertical ou diagonal)
+    case "q": // Queen
       if (
         (dx === 0 || dy === 0 || absDx === absDy) &&
         isPathClear(fromRow, fromCol, toRow, toCol)
       )
         validGeometry = true;
       break;
-    case "n": // Cavalo
-      // Movimento em "L"
+    case "n": // Knight
       if ((absDx === 2 && absDy === 1) || (absDx === 1 && absDy === 2))
         validGeometry = true;
       break;
-    case "k": // Rei
-      // Movimento de uma casa em qualquer direção
-      if (absDx <= 1 && absDy <= 1) validGeometry = true;
+
+    case "k": // King
+      if (absDx <= 1 && absDy <= 1) {
+        validGeometry = true;
+      }
+      // Castling Logic (only if not simpleCheck)
+      else if (!simpleCheck && dy === 0 && absDx === 2) {
+        const rights = castlingRights[myColor];
+        if (!rights.kingMoved && !isSquareAttacked(fromRow, fromCol, myColor)) {
+          // Kingside
+          if (dx === 2 && !rights.rookRightMoved) {
+            if (
+              isPathClear(fromRow, fromCol, fromRow, 7) &&
+              !isSquareAttacked(fromRow, fromCol + 1, myColor) &&
+              !isSquareAttacked(fromRow, fromCol + 2, myColor)
+            ) {
+              validGeometry = true;
+            }
+          }
+          // Queenside
+          if (dx === -2 && !rights.rookLeftMoved) {
+            if (
+              isPathClear(fromRow, fromCol, fromRow, 0) &&
+              !isSquareAttacked(fromRow, fromCol - 1, myColor) &&
+              !isSquareAttacked(fromRow, fromCol - 2, myColor)
+            ) {
+              validGeometry = true;
+            }
+          }
+        }
+      }
       break;
   }
+
   if (!validGeometry) return false;
+
+  // 3. King Safety Simulation
   if (ignoreKingSafety) return true;
 
-  // Faz uma simulação do movimento para verificar se deixa o rei em xeque
   const originalSource = initialBoard[fromRow][fromCol];
   const originalTarget = initialBoard[toRow][toCol];
 
-  // Simula o movimento
+  // Handle En Passant simulation capture
+  let enPassantCaptureRow = null;
+  let enPassantCapturedPiece = null;
+  if (type === "p" && absDx === 1 && !targetPiece) {
+    enPassantCaptureRow = fromRow;
+    enPassantCapturedPiece = initialBoard[enPassantCaptureRow][toCol];
+    initialBoard[enPassantCaptureRow][toCol] = "";
+  }
+
+  // Apply move temporarily
   initialBoard[toRow][toCol] = originalSource;
   initialBoard[fromRow][fromCol] = "";
 
-  const myColor = piece === piece.toUpperCase() ? "white" : "black";
   const kingPos = findKing(myColor);
-
   let isSafe = true;
-  // Verifica se o rei está em xeque após o movimento
-  if (kingPos && isSquareAttacked(kingPos.row, kingPos.col, myColor)) {
-    isSafe = false;
-  }
+  // Account for King movement during simulation
+  const checkRow = type === "k" ? toRow : kingPos.row;
+  const checkCol = type === "k" ? toCol : kingPos.col;
 
-  // Desfaz a simulação
+  if (isSquareAttacked(checkRow, checkCol, myColor)) isSafe = false;
+
+  // Revert move
   initialBoard[fromRow][fromCol] = originalSource;
   initialBoard[toRow][toCol] = originalTarget;
+  if (enPassantCaptureRow !== null) {
+    initialBoard[enPassantCaptureRow][toCol] = enPassantCapturedPiece;
+  }
 
   return isSafe;
 }
 
-/**
- * Gerencia a promoção de um peão
- * @param {number} row - Linha do peão a ser promovido
- * @param {number} col - Coluna do peão a ser promovido
- * @param {string} color - Cor do peão ("white" ou "black")
- */
+// --- Interaction & Game Loop ---
+
+/** Handles Pawn Promotion Modal */
 function promotePawn(row, col, color) {
   const modal = document.getElementById("promotionModal");
-  modal.classList.add("show");
+  modal.style.display = "flex";
+  setTimeout(() => modal.classList.add("show"), 10);
 
   const buttons = modal.querySelectorAll("button");
+  const newButtons = [];
+  // Clone to remove old listeners
   buttons.forEach((btn) => {
+    const newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+    newButtons.push(newBtn);
+  });
+
+  newButtons.forEach((btn) => {
     btn.onclick = () => {
       const choice = btn.dataset.piece;
       let newPiece;
-
-      // Converte a escolha para a peça correspondente na cor correta
       switch (choice) {
         case "Q":
           newPiece = color === "white" ? "Q" : "q";
@@ -439,28 +349,194 @@ function promotePawn(row, col, color) {
           newPiece = color === "white" ? "N" : "n";
           break;
       }
-
-      // Atualiza o tabuleiro com a nova peça
       initialBoard[row][col] = newPiece;
-
-      // Fecha o modal
       modal.classList.remove("show");
       setTimeout(() => {
         modal.style.display = "none";
-      }, 400);
-
-      // Atualiza o tabuleiro e verifica xeque
+      }, 300);
       createBoard();
-      highlightCheck();
+      switchTurn();
     };
   });
-
-  modal.style.display = "flex";
 }
 
-/**
- * INICIALIZAÇÃO DO JOGO
- */
+/** Detects Check, Checkmate, and Stalemate */
+function highlightCheck() {
+  document
+    .querySelectorAll(".check")
+    .forEach((el) => el.classList.remove("check"));
+  const kingPos = findKing(turn);
+  if (!kingPos) return;
 
-// Cria o tabuleiro inicial
+  if (isSquareAttacked(kingPos.row, kingPos.col, turn)) {
+    const squareIndex = kingPos.row * 8 + kingPos.col;
+    boardElement.children[squareIndex].classList.add("check");
+
+    if (!hasAnyLegalMove(turn)) {
+      showMessage(`Checkmate! ${turn === "white" ? "Black" : "White"} wins!`);
+      gameOver = true;
+    } else {
+      showMessage(`⚠️ Check! ${turn === "white" ? "White" : "Black"}'s turn`);
+    }
+  } else {
+    if (!hasAnyLegalMove(turn)) {
+      showMessage("Stalemate! The game is a draw.");
+      gameOver = true;
+    } else {
+      showMessage(`${turn === "white" ? "White" : "Black"}'s turn`);
+    }
+  }
+}
+
+/** Resets the game to initial state */
+function resetGame() {
+  initialBoard = JSON.parse(JSON.stringify(startConfig));
+  turn = "white";
+  gameOver = false;
+  selectedSquare = null;
+  lastMove = null;
+  castlingRights = {
+    white: { kingMoved: false, rookLeftMoved: false, rookRightMoved: false },
+    black: { kingMoved: false, rookLeftMoved: false, rookRightMoved: false },
+  };
+  showMessage("White's turn");
+  createBoard();
+}
+
+/** Renders the board based on the `initialBoard` array */
+function createBoard() {
+  boardElement.innerHTML = "";
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      const square = document.createElement("div");
+      square.className = `square ${(row + col) % 2 === 0 ? "white" : "black"}`;
+      square.dataset.row = row;
+      square.dataset.col = col;
+
+      const piece = initialBoard[row][col];
+      if (piece) {
+        square.innerText = pieces[piece];
+        square.dataset.piece = piece;
+        square.dataset.color =
+          piece === piece.toUpperCase() ? "white" : "black";
+      }
+      square.addEventListener("click", handleClick);
+      boardElement.appendChild(square);
+    }
+  }
+}
+
+/** Main Click Handler */
+function handleClick(e) {
+  if (gameOver) return;
+  const square = e.target.closest(".square");
+  if (!square) return;
+
+  const row = parseInt(square.dataset.row);
+  const col = parseInt(square.dataset.col);
+  const piece = initialBoard[row][col];
+  const color = square.dataset.color;
+
+  // Selection Logic
+  if (!selectedSquare) {
+    if (piece && color === turn) {
+      selectedSquare = { row, col, piece, element: square };
+      square.classList.add("selected");
+    }
+    return;
+  }
+
+  if (selectedSquare.row === row && selectedSquare.col === col) {
+    resetSelection();
+    return;
+  }
+  if (piece && color === turn) {
+    resetSelection();
+    selectedSquare = { row, col, piece, element: square };
+    square.classList.add("selected");
+    return;
+  }
+
+  const prevRow = selectedSquare.row;
+  const prevCol = selectedSquare.col;
+
+  // Move Execution
+  if (isValidMove(selectedSquare.piece, prevRow, prevCol, row, col)) {
+    // 1. En Passant Execution
+    if (
+      selectedSquare.piece.toLowerCase() === "p" &&
+      Math.abs(col - prevCol) === 1 &&
+      !initialBoard[row][col]
+    ) {
+      initialBoard[prevRow][col] = ""; // Remove captured pawn
+    }
+
+    // 2. Castling Execution
+    if (
+      selectedSquare.piece.toLowerCase() === "k" &&
+      Math.abs(col - prevCol) === 2
+    ) {
+      if (col > prevCol) {
+        // Kingside
+        const rookPiece = initialBoard[row][7];
+        initialBoard[row][5] = rookPiece;
+        initialBoard[row][7] = "";
+      } else {
+        // Queenside
+        const rookPiece = initialBoard[row][0];
+        initialBoard[row][3] = rookPiece;
+        initialBoard[row][0] = "";
+      }
+    }
+
+    // 3. Move Piece
+    initialBoard[row][col] = selectedSquare.piece;
+    initialBoard[prevRow][prevCol] = "";
+
+    // 4. Update State (Castling Rights & History)
+    if (selectedSquare.piece === "K") castlingRights.white.kingMoved = true;
+    if (selectedSquare.piece === "k") castlingRights.black.kingMoved = true;
+
+    if (selectedSquare.piece === "R") {
+      if (prevCol === 0) castlingRights.white.rookLeftMoved = true;
+      if (prevCol === 7) castlingRights.white.rookRightMoved = true;
+    }
+    if (selectedSquare.piece === "r") {
+      if (prevCol === 0) castlingRights.black.rookLeftMoved = true;
+      if (prevCol === 7) castlingRights.black.rookRightMoved = true;
+    }
+
+    lastMove = {
+      piece: selectedSquare.piece,
+      fromRow: prevRow,
+      fromCol: prevCol,
+      toRow: row,
+      toCol: col,
+    };
+
+    resetSelection();
+    createBoard();
+
+    // 5. Promotion Check
+    if (
+      (initialBoard[row][col] === "P" && row === 0) ||
+      (initialBoard[row][col] === "p" && row === 7)
+    ) {
+      const promoColor = initialBoard[row][col] === "P" ? "white" : "black";
+      promotePawn(row, col, promoColor);
+      return; // Wait for user choice before switching turn
+    }
+
+    switchTurn();
+  } else {
+    // Invalid Move Feedback
+    square.style.backgroundColor = "#ffcccc";
+    setTimeout(() => {
+      square.style.backgroundColor = "";
+    }, 200);
+    resetSelection();
+  }
+}
+
+// Start Game
 createBoard();
